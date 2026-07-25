@@ -1,8 +1,22 @@
+locals {
+  # OCI accepts `recipients` as a comma-separated string. Trim surrounding
+  # whitespace and drop empty entries so a value like "a@example.com, ,"
+  # does not reach the API with blank or padded addresses.
+  budget_alert_recipients = join(",", compact([
+    for recipient in split(",", var.budget_alert_recipients) : trimspace(recipient)
+  ]))
+}
+
 resource "oci_identity_compartment" "this" {
   compartment_id = var.parent_compartment_id
   name           = var.compartment_name
   description    = var.compartment_description
-  enable_delete  = true
+
+  # Defaults to false: `terraform destroy` then releases the compartment from
+  # state without asking OCI to delete it. A landing-zone compartment is the
+  # blast-radius boundary for everything a team owns, so opting in to real
+  # deletion is left to the caller.
+  enable_delete = var.compartment_enable_delete
 
   freeform_tags = var.freeform_tags
   defined_tags  = var.defined_tags
@@ -24,7 +38,13 @@ resource "oci_identity_tag" "this" {
   name             = each.value
   description      = "Governance tag ${each.value}"
 
+  # OCI Cost Analysis and TAG-targeted budgets only aggregate on tags that are
+  # explicitly marked as cost-tracking; the API default is false. Without this,
+  # the CostCenter key this module creates is invisible to every cost report.
+  is_cost_tracking = contains(var.cost_tracking_tag_keys, each.value)
+
   freeform_tags = var.freeform_tags
+  defined_tags  = var.defined_tags
 }
 
 resource "oci_budget_budget" "this" {
@@ -47,6 +67,9 @@ resource "oci_budget_alert_rule" "this" {
   type           = "ACTUAL"
   threshold      = var.budget_alert_threshold
   threshold_type = "PERCENTAGE"
-  recipients     = var.budget_alert_recipients
+  recipients     = local.budget_alert_recipients
   message        = "The ${var.compartment_name} baseline compartment has reached ${var.budget_alert_threshold}% of its monthly budget."
+
+  freeform_tags = var.freeform_tags
+  defined_tags  = var.defined_tags
 }
