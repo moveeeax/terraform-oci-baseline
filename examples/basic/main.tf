@@ -12,6 +12,10 @@ module "baseline" {
   budget_alert_threshold  = 80
   budget_alert_recipients = "finops@example.com"
 
+  # This example is a throwaway sandbox, so let `terraform destroy` really
+  # remove the compartment. Leave the default (false) for anything long-lived.
+  compartment_enable_delete = true
+
   freeform_tags = {
     Environment = "sandbox"
     ManagedBy   = "terraform"
