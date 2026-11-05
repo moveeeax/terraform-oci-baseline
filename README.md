@@ -9,7 +9,7 @@ compartment. Use it as the first step when onboarding a new team or environment.
 
 ```hcl
 module "baseline" {
-  source = "github.com/moveeeax/terraform-oci-baseline"
+  source = "github.com/moveeeax/terraform-oci-baseline?ref=v1.0.0"
 
   tenancy_id            = var.tenancy_id
   parent_compartment_id = var.tenancy_id
@@ -72,7 +72,7 @@ module itself still supports >= 1.5.
 | `tenancy_id`              | OCID of the tenancy the baseline is created under.                 | `string`       | n/a                                |   yes    |
 | `parent_compartment_id`   | OCID of the parent compartment for the new compartment.            | `string`       | n/a                                |   yes    |
 | `compartment_name`        | Name of the landing-zone compartment.                             | `string`       | n/a                                |   yes    |
-| `compartment_description` | Description of the landing-zone compartment.                       | `string`       | landing-zone default               |    no    |
+| `compartment_description` | Description of the landing-zone compartment.                       | `string`       | `"Landing zone baseline compartment managed by Terraform"` |    no    |
 | `compartment_enable_delete` | Whether `terraform destroy` really deletes the compartment.      | `bool`         | `false`                            |    no    |
 | `tag_namespace_name`      | Name of the defined-tag namespace.                                | `string`       | n/a                                |   yes    |
 | `tag_keys`                | Defined-tag keys to create in the namespace.                      | `list(string)` | `["Environment","Owner","CostCenter"]` |  no  |
