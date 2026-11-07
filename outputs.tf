@@ -13,6 +13,11 @@ output "tag_ids" {
   value       = { for k, t in oci_identity_tag.this : k => t.id }
 }
 
+output "tag_default_ids" {
+  description = "Map of tag key name to tag default OCID, for the keys in tag_defaults."
+  value       = { for k, d in oci_identity_tag_default.this : k => d.id }
+}
+
 output "budget_id" {
   description = "OCID of the compartment budget."
   value       = oci_budget_budget.this.id
