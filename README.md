@@ -2,8 +2,8 @@
 
 Terraform module that provisions a small [Oracle Cloud Infrastructure](https://www.oracle.com/cloud/)
 landing-zone baseline: a dedicated compartment, a governance defined-tag namespace with a
-set of standard tag keys, and a monthly budget with a threshold alert scoped to the new
-compartment. Use it as the first step when onboarding a new team or environment.
+set of standard tag keys, and a monthly budget with forecast and actual-spend alerts
+scoped to the new compartment. Use it as the first step when onboarding a new team or environment.
 
 ## Usage
 
@@ -17,8 +17,21 @@ module "baseline" {
   tag_namespace_name    = "alpha-governance"
 
   budget_amount           = 1000
-  budget_alert_threshold  = 90
   budget_alert_recipients = "finops@example.com"
+
+  # Early warning when the month is forecast to overspend, plus an alert once
+  # actual spend passes 90%. The forecast alert goes to the team owner only.
+  budget_alerts = {
+    forecast = {
+      type       = "FORECAST"
+      threshold  = 100
+      recipients = "alpha-lead@example.com"
+    }
+    actual = {
+      type      = "ACTUAL"
+      threshold = 90
+    }
+  }
 
   # Every resource created in the compartment gets CostCenter = "alpha"
   # unless it sets its own value.
@@ -55,6 +68,15 @@ A runnable example lives in [`examples/basic`](examples/basic).
   this module creates is invisible to every cost report — a cost-allocation tag
   that cannot allocate cost. Adjust with `cost_tracking_tag_keys` (OCI allows at
   most 10 cost-tracking tags per tenancy).
+- **Two budget alerts by default: forecast at 100%, actual at 80%.** An
+  `ACTUAL` alert fires once the money is already spent; the `FORECAST` alert
+  fires when OCI projects the month will reach the budget, which leaves time to
+  act. Override with `budget_alerts`. Alerts without their own `recipients` go
+  to `budget_alert_recipients`. The `actual` key is the alert rule versions up
+  to 1.1.0 created as a single resource; a `moved` block maps it, so keep that
+  key to upgrade without replacing the rule.
+- **`budget_alert_threshold` is deprecated.** It still works: when set, it
+  overrides the threshold of the `actual` alert. Move it into `budget_alerts`.
 - **No tag defaults are created unless you ask.** `tag_defaults` is empty by
   default. Each entry becomes an `oci_identity_tag_default` on the baseline
   compartment, which child compartments inherit. With `is_required = true` OCI
@@ -93,8 +115,9 @@ module itself still supports >= 1.5.
 | `cost_tracking_tag_keys`  | Keys from `tag_keys` to mark as cost-tracking (max 10).           | `list(string)` | `["CostCenter"]`                   |    no    |
 | `tag_defaults`            | Tag defaults on the compartment, keyed by tag name from `tag_keys`. | `map(object({ value = string, is_required = optional(bool, false) }))` | `{}` | no |
 | `budget_amount`           | Monthly budget amount tracking the compartment.                   | `number`       | `100`                              |    no    |
-| `budget_alert_threshold`  | Budget percentage at which the alert notifies.                    | `number`       | `80`                               |    no    |
-| `budget_alert_recipients` | Comma-separated email recipients for the budget alert (>= 1).     | `string`       | n/a                                |   yes    |
+| `budget_alerts`           | Budget alert rules keyed by name: `type` (`ACTUAL` or `FORECAST`), `threshold` (percent, 1-100), optional `recipients`. | `map(object({ type = string, threshold = number, recipients = optional(string) }))` | `{ forecast = FORECAST 100, actual = ACTUAL 80 }` | no |
+| `budget_alert_threshold`  | Deprecated: overrides the `actual` alert threshold when set.      | `number`       | `null`                             |    no    |
+| `budget_alert_recipients` | Comma-separated email recipients (>= 1) for alerts without their own `recipients`. | `string` | n/a                       |   yes    |
 | `freeform_tags`           | Free-form tags applied to the baseline resources.                 | `map(string)`  | `{}`                               |    no    |
 | `defined_tags`            | Defined tags applied to the baseline resources.                   | `map(string)`  | `{}`                               |    no    |
 
@@ -107,7 +130,8 @@ module itself still supports >= 1.5.
 | `tag_ids`              | Map of tag key name to tag OCID.         |
 | `tag_default_ids`      | Map of tag key name to tag default OCID. |
 | `budget_id`            | OCID of the compartment budget.          |
-| `budget_alert_rule_id` | OCID of the budget alert rule.           |
+| `budget_alert_rule_ids` | Map of `budget_alerts` key to alert rule OCID. |
+| `budget_alert_rule_id` | Deprecated: OCID of the `actual` alert rule, or null. |
 
 ## License
 
