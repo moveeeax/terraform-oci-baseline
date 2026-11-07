@@ -59,6 +59,27 @@ variable "cost_tracking_tag_keys" {
   }
 }
 
+variable "tag_defaults" {
+  description = <<-EOT
+    Tag defaults to attach to the baseline compartment, keyed by a tag name
+    from `tag_keys`. OCI applies the value to every resource created in the
+    compartment and its children. With `is_required = true` OCI blocks
+    resource creation in the compartment unless a value for the tag is set,
+    which is what keeps resources out of the untagged bucket in cost reports.
+    Keys must also be listed in `tag_keys`.
+  EOT
+  type = map(object({
+    value       = string
+    is_required = optional(bool, false)
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for d in values(var.tag_defaults) : length(trimspace(d.value)) > 0])
+    error_message = "Every tag_defaults entry must have a non-empty value."
+  }
+}
+
 variable "budget_amount" {
   description = "Monthly budget amount, in the tenancy currency, tracking the baseline compartment."
   type        = number

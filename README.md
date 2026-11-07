@@ -20,6 +20,14 @@ module "baseline" {
   budget_alert_threshold  = 90
   budget_alert_recipients = "finops@example.com"
 
+  # Every resource created in the compartment gets CostCenter = "alpha"
+  # unless it sets its own value.
+  tag_defaults = {
+    CostCenter = {
+      value = "alpha"
+    }
+  }
+
   freeform_tags = {
     Environment = "production"
     ManagedBy   = "terraform"
@@ -47,6 +55,12 @@ A runnable example lives in [`examples/basic`](examples/basic).
   this module creates is invisible to every cost report — a cost-allocation tag
   that cannot allocate cost. Adjust with `cost_tracking_tag_keys` (OCI allows at
   most 10 cost-tracking tags per tenancy).
+- **No tag defaults are created unless you ask.** `tag_defaults` is empty by
+  default. Each entry becomes an `oci_identity_tag_default` on the baseline
+  compartment, which child compartments inherit. With `is_required = true` OCI
+  rejects resource creation in the compartment unless the tag gets a value, so
+  turn it on only once the teams creating resources know about the tag. Keys
+  must be tag names from `tag_keys`; an unknown key fails the plan.
 
 ## Tests
 
@@ -77,6 +91,7 @@ module itself still supports >= 1.5.
 | `tag_namespace_name`      | Name of the defined-tag namespace.                                | `string`       | n/a                                |   yes    |
 | `tag_keys`                | Defined-tag keys to create in the namespace.                      | `list(string)` | `["Environment","Owner","CostCenter"]` |  no  |
 | `cost_tracking_tag_keys`  | Keys from `tag_keys` to mark as cost-tracking (max 10).           | `list(string)` | `["CostCenter"]`                   |    no    |
+| `tag_defaults`            | Tag defaults on the compartment, keyed by tag name from `tag_keys`. | `map(object({ value = string, is_required = optional(bool, false) }))` | `{}` | no |
 | `budget_amount`           | Monthly budget amount tracking the compartment.                   | `number`       | `100`                              |    no    |
 | `budget_alert_threshold`  | Budget percentage at which the alert notifies.                    | `number`       | `80`                               |    no    |
 | `budget_alert_recipients` | Comma-separated email recipients for the budget alert (>= 1).     | `string`       | n/a                                |   yes    |
@@ -90,6 +105,7 @@ module itself still supports >= 1.5.
 | `compartment_id`       | OCID of the landing-zone compartment.    |
 | `tag_namespace_id`     | OCID of the governance tag namespace.    |
 | `tag_ids`              | Map of tag key name to tag OCID.         |
+| `tag_default_ids`      | Map of tag key name to tag default OCID. |
 | `budget_id`            | OCID of the compartment budget.          |
 | `budget_alert_rule_id` | OCID of the budget alert rule.           |
 

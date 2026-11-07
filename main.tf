@@ -73,3 +73,23 @@ resource "oci_budget_alert_rule" "this" {
   freeform_tags = var.freeform_tags
   defined_tags  = var.defined_tags
 }
+
+resource "oci_identity_tag_default" "this" {
+  for_each = var.tag_defaults
+
+  # Tag defaults are inherited by child compartments, so attaching them to the
+  # baseline compartment covers everything created inside the landing zone.
+  compartment_id = oci_identity_compartment.this.id
+  # try() keeps an unknown key from failing with an index error before the
+  # precondition below can report it.
+  tag_definition_id = try(oci_identity_tag.this[each.key].id, null)
+  value             = each.value.value
+  is_required       = each.value.is_required
+
+  lifecycle {
+    precondition {
+      condition     = contains(var.tag_keys, each.key)
+      error_message = "tag_defaults key \"${each.key}\" is not in tag_keys; a tag default can only reference a tag this module creates."
+    }
+  }
+}

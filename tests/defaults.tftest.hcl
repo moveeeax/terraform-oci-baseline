@@ -147,3 +147,77 @@ run "rejects_too_many_cost_tracking_keys" {
 
   expect_failures = [var.cost_tracking_tag_keys]
 }
+
+run "no_tag_defaults_by_default" {
+  assert {
+    condition     = length(oci_identity_tag_default.this) == 0
+    error_message = "Tag defaults must be opt-in so the default plan stays unchanged."
+  }
+}
+
+run "tag_defaults_attach_to_baseline_compartment" {
+  variables {
+    tag_defaults = {
+      CostCenter = {
+        value       = "platform"
+        is_required = true
+      }
+      Environment = {
+        value = "production"
+      }
+    }
+  }
+
+  assert {
+    condition     = oci_identity_tag_default.this["CostCenter"].compartment_id == oci_identity_compartment.this.id
+    error_message = "Tag defaults must be attached to the baseline compartment."
+  }
+
+  assert {
+    condition     = oci_identity_tag_default.this["CostCenter"].tag_definition_id == oci_identity_tag.this["CostCenter"].id
+    error_message = "A tag default must reference the matching tag created by this module."
+  }
+
+  assert {
+    condition     = oci_identity_tag_default.this["CostCenter"].value == "platform" && oci_identity_tag_default.this["CostCenter"].is_required == true
+    error_message = "tag_defaults value and is_required must be passed through."
+  }
+
+  assert {
+    condition     = oci_identity_tag_default.this["Environment"].is_required == false
+    error_message = "is_required must default to false."
+  }
+
+  assert {
+    condition     = keys(output.tag_default_ids) == ["CostCenter", "Environment"]
+    error_message = "tag_default_ids must be keyed by tag name."
+  }
+}
+
+run "rejects_tag_default_for_unknown_key" {
+  command = plan
+
+  variables {
+    tag_defaults = {
+      Project = {
+        value = "alpha"
+      }
+    }
+  }
+
+  expect_failures = [oci_identity_tag_default.this]
+}
+
+run "rejects_blank_tag_default_value" {
+  command = plan
+
+  variables {
+    tag_defaults = {
+      Owner = {
+        value = "  "
+      }
+    }
+  }
+
+  expect_failures = [var.tag_defaults]
+}
