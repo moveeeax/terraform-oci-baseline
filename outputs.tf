@@ -23,7 +23,12 @@ output "budget_id" {
   value       = oci_budget_budget.this.id
 }
 
+output "budget_alert_rule_ids" {
+  description = "Map of budget_alerts key to budget alert rule OCID."
+  value       = { for k, r in oci_budget_alert_rule.this : k => r.id }
+}
+
 output "budget_alert_rule_id" {
-  description = "OCID of the budget alert rule."
-  value       = oci_budget_alert_rule.this.id
+  description = "Deprecated: use budget_alert_rule_ids. OCID of the `actual` budget alert rule, or null if there is none."
+  value       = try(oci_budget_alert_rule.this["actual"].id, null)
 }

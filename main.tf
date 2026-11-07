@@ -5,6 +5,20 @@ locals {
   budget_alert_recipients = join(",", compact([
     for recipient in split(",", var.budget_alert_recipients) : trimspace(recipient)
   ]))
+
+  # Deprecated shortcut: a non-null budget_alert_threshold sets the threshold
+  # of the `actual` alert, so callers of the single-alert interface keep their
+  # threshold without rewriting their config.
+  budget_alerts = merge(
+    var.budget_alerts,
+    var.budget_alert_threshold == null ? {} : {
+      actual = {
+        type       = "ACTUAL"
+        threshold  = var.budget_alert_threshold
+        recipients = try(var.budget_alerts["actual"].recipients, null)
+      }
+    },
+  )
 }
 
 resource "oci_identity_compartment" "this" {
@@ -63,15 +77,30 @@ resource "oci_budget_budget" "this" {
 }
 
 resource "oci_budget_alert_rule" "this" {
+  for_each = local.budget_alerts
+
   budget_id      = oci_budget_budget.this.id
-  type           = "ACTUAL"
-  threshold      = var.budget_alert_threshold
+  type           = each.value.type
+  threshold      = each.value.threshold
   threshold_type = "PERCENTAGE"
-  recipients     = local.budget_alert_recipients
-  message        = "The ${var.compartment_name} baseline compartment has reached ${var.budget_alert_threshold}% of its monthly budget."
+  recipients = each.value.recipients == null ? local.budget_alert_recipients : join(",", compact([
+    for recipient in split(",", each.value.recipients) : trimspace(recipient)
+  ]))
+  message = (each.value.type == "FORECAST"
+    ? "The ${var.compartment_name} baseline compartment is forecast to reach ${each.value.threshold}% of its monthly budget."
+    : "The ${var.compartment_name} baseline compartment has reached ${each.value.threshold}% of its monthly budget."
+  )
 
   freeform_tags = var.freeform_tags
   defined_tags  = var.defined_tags
+}
+
+# Versions up to 1.1.0 managed a single alert rule without for_each. Moving it
+# to the `actual` key keeps that rule in place on upgrade instead of
+# destroying and recreating it.
+moved {
+  from = oci_budget_alert_rule.this
+  to   = oci_budget_alert_rule.this["actual"]
 }
 
 resource "oci_identity_tag_default" "this" {

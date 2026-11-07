@@ -31,8 +31,8 @@ run "compartment_delete_can_be_opted_into" {
 
 run "budget_alert_has_recipients" {
   assert {
-    condition     = length(trimspace(oci_budget_alert_rule.this.recipients)) > 0
-    error_message = "The budget alert rule was created without recipients; it would notify nobody."
+    condition     = alltrue([for r in oci_budget_alert_rule.this : length(trimspace(r.recipients)) > 0])
+    error_message = "A budget alert rule was created without recipients; it would notify nobody."
   }
 }
 
@@ -42,7 +42,7 @@ run "budget_alert_recipients_are_normalised" {
   }
 
   assert {
-    condition     = oci_budget_alert_rule.this.recipients == "finops@example.com,platform@example.com"
+    condition     = oci_budget_alert_rule.this["actual"].recipients == "finops@example.com,platform@example.com"
     error_message = "Recipient list must be trimmed and stripped of empty entries before it reaches the OCI API."
   }
 }
@@ -220,4 +220,144 @@ run "rejects_blank_tag_default_value" {
   }
 
   expect_failures = [var.tag_defaults]
+}
+
+run "default_budget_alerts_are_forecast_100_and_actual_80" {
+  assert {
+    condition     = keys(oci_budget_alert_rule.this) == ["actual", "forecast"]
+    error_message = "The default budget_alerts must create one forecast and one actual alert."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["forecast"].type == "FORECAST" && oci_budget_alert_rule.this["forecast"].threshold == 100
+    error_message = "The default forecast alert must fire at 100% of the forecast."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["actual"].type == "ACTUAL" && oci_budget_alert_rule.this["actual"].threshold == 80
+    error_message = "The default actual alert must keep the previous 80% threshold."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["actual"].message == "The test-lz baseline compartment has reached 80% of its monthly budget."
+    error_message = "The actual alert message must match earlier versions so upgrading does not change the existing rule."
+  }
+
+  assert {
+    condition     = output.budget_alert_rule_id == oci_budget_alert_rule.this["actual"].id
+    error_message = "The deprecated budget_alert_rule_id output must point at the actual alert."
+  }
+}
+
+run "custom_budget_alerts_with_own_recipients" {
+  variables {
+    budget_alerts = {
+      forecast_90 = {
+        type       = "FORECAST"
+        threshold  = 90
+        recipients = " owner@example.com ,"
+      }
+      actual_100 = {
+        type      = "ACTUAL"
+        threshold = 100
+      }
+    }
+  }
+
+  assert {
+    condition     = keys(oci_budget_alert_rule.this) == ["actual_100", "forecast_90"]
+    error_message = "budget_alerts keys must become alert rule instances."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["forecast_90"].recipients == "owner@example.com"
+    error_message = "Per-alert recipients must be normalised and used instead of budget_alert_recipients."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["actual_100"].recipients == "finops@example.com"
+    error_message = "An alert without recipients must fall back to budget_alert_recipients."
+  }
+
+  assert {
+    condition     = output.budget_alert_rule_id == null
+    error_message = "budget_alert_rule_id must be null when there is no actual alert."
+  }
+
+  assert {
+    condition     = keys(output.budget_alert_rule_ids) == ["actual_100", "forecast_90"]
+    error_message = "budget_alert_rule_ids must be keyed by budget_alerts key."
+  }
+}
+
+run "deprecated_threshold_overrides_actual_alert" {
+  variables {
+    budget_alert_threshold = 90
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["actual"].threshold == 90
+    error_message = "budget_alert_threshold must still set the actual alert threshold."
+  }
+
+  assert {
+    condition     = oci_budget_alert_rule.this["forecast"].threshold == 100
+    error_message = "budget_alert_threshold must not change other alerts."
+  }
+}
+
+run "rejects_empty_budget_alerts" {
+  command = plan
+
+  variables {
+    budget_alerts = {}
+  }
+
+  expect_failures = [var.budget_alerts]
+}
+
+run "rejects_unknown_budget_alert_type" {
+  command = plan
+
+  variables {
+    budget_alerts = {
+      bad = {
+        type      = "PREDICTED"
+        threshold = 80
+      }
+    }
+  }
+
+  expect_failures = [var.budget_alerts]
+}
+
+run "rejects_out_of_range_budget_alert_threshold" {
+  command = plan
+
+  variables {
+    budget_alerts = {
+      bad = {
+        type      = "ACTUAL"
+        threshold = 0
+      }
+    }
+  }
+
+  expect_failures = [var.budget_alerts]
+}
+
+run "rejects_bad_budget_alert_recipients" {
+  command = plan
+
+  variables {
+    budget_alerts = {
+      bad = {
+        type       = "ACTUAL"
+        threshold  = 80
+        recipients = "ops-team"
+      }
+    }
+  }
+
+  expect_failures = [var.budget_alerts]
 }

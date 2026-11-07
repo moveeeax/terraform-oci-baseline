@@ -91,22 +91,82 @@ variable "budget_amount" {
   }
 }
 
-variable "budget_alert_threshold" {
-  description = "Percentage of the budget at which the alert notifies recipients."
-  type        = number
-  default     = 80
+variable "budget_alerts" {
+  description = <<-EOT
+    Budget alert rules, keyed by a name of your choice. `type` is "ACTUAL"
+    (spend so far) or "FORECAST" (spend OCI projects for the month);
+    `threshold` is a percentage of `budget_amount`. `recipients` is a
+    comma-separated email list and falls back to `budget_alert_recipients`
+    when omitted. The default pairs a forecast alert at 100% as the early
+    warning with an actual-spend alert at 80%. The `actual` key is the rule
+    earlier versions created, so keep it to avoid replacing that rule.
+  EOT
+  type = map(object({
+    type       = string
+    threshold  = number
+    recipients = optional(string)
+  }))
+  default = {
+    forecast = {
+      type      = "FORECAST"
+      threshold = 100
+    }
+    actual = {
+      type      = "ACTUAL"
+      threshold = 80
+    }
+  }
 
   validation {
-    condition     = var.budget_alert_threshold > 0 && var.budget_alert_threshold <= 100
+    condition     = length(var.budget_alerts) > 0
+    error_message = "budget_alerts must contain at least one alert; a budget without alerts notifies nobody."
+  }
+
+  validation {
+    condition     = alltrue([for a in values(var.budget_alerts) : contains(["ACTUAL", "FORECAST"], a.type)])
+    error_message = "Every budget_alerts entry must have type \"ACTUAL\" or \"FORECAST\"."
+  }
+
+  validation {
+    condition     = alltrue([for a in values(var.budget_alerts) : a.threshold > 0 && a.threshold <= 100])
+    error_message = "Every budget_alerts threshold must be between 1 and 100."
+  }
+
+  validation {
+    condition = alltrue([
+      for a in values(var.budget_alerts) : a.recipients == null ? true : (
+        length(compact([for r in split(",", a.recipients) : trimspace(r)])) > 0 &&
+        alltrue([
+          for r in compact([for r in split(",", a.recipients) : trimspace(r)]) :
+          can(regex("^[^@,[:space:]]+@[^@,[:space:]]+\\.[^@,[:space:]]+$", r))
+        ])
+      )
+    ])
+    error_message = "budget_alerts recipients, when set, must be a non-empty comma-separated list of email addresses; omit it to use budget_alert_recipients."
+  }
+}
+
+variable "budget_alert_threshold" {
+  description = <<-EOT
+    Deprecated: use `budget_alerts`. When set, overrides the threshold of the
+    `actual` entry in `budget_alerts` (adding it if missing). Defaults to null,
+    which leaves `budget_alerts` as given.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.budget_alert_threshold == null ? true : (var.budget_alert_threshold > 0 && var.budget_alert_threshold <= 100)
     error_message = "budget_alert_threshold must be between 1 and 100."
   }
 }
 
 variable "budget_alert_recipients" {
   description = <<-EOT
-    Comma-separated list of email recipients for the budget alert. Must contain
-    at least one address: `recipients` is optional in the OCI API, so a blank
-    value produces an alert rule that fires but notifies nobody.
+    Comma-separated list of email recipients for budget alerts that do not set
+    their own `recipients` in `budget_alerts`. Must contain at least one
+    address: `recipients` is optional in the OCI API, so a blank value
+    produces an alert rule that fires but notifies nobody.
   EOT
   type        = string
 
