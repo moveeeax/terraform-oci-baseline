@@ -6,6 +6,8 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-07
+
 ### Added
 
 - `tag_defaults` input: creates `oci_identity_tag_default` resources on the
@@ -30,3 +32,6 @@ All notable changes to this module are documented here. The format follows
   threshold of the `actual` alert. Use `budget_alerts`. (#5)
 - `budget_alert_rule_id` output: returns the `actual` alert rule OCID or
   `null`. Use `budget_alert_rule_ids`. (#5)
+
+[Unreleased]: https://github.com/moveeeax/terraform-oci-baseline/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/moveeeax/terraform-oci-baseline/compare/v1.1.0...v1.2.0
