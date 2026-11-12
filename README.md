@@ -3,7 +3,9 @@
 Terraform module that provisions a small [Oracle Cloud Infrastructure](https://www.oracle.com/cloud/)
 landing-zone baseline: a dedicated compartment, a governance defined-tag namespace with a
 set of standard tag keys, and a monthly budget with forecast and actual-spend alerts
-scoped to the new compartment. Use it as the first step when onboarding a new team or environment.
+scoped to the new compartment. Optionally it also creates a compartment tree under that
+compartment and a compartment quota policy. Use it as the first step when onboarding a new
+team or environment.
 
 ## Usage
 
@@ -50,6 +52,69 @@ module "baseline" {
 
 A runnable example lives in [`examples/basic`](examples/basic).
 
+### Compartment tree and quotas
+
+```hcl
+module "baseline" {
+  # ... inputs as above ...
+
+  compartments = {
+    prod = {
+      description = "Production workloads"
+    }
+    prod-network = {
+      name        = "network" # defaults to the key
+      description = "Production networking"
+      parent_key  = "prod"
+    }
+    dev = {
+      description = "Development workloads"
+    }
+    dev-network = {
+      name        = "network"
+      description = "Development networking"
+      parent_key  = "dev"
+    }
+  }
+
+  quota_statements = [
+    "set compute quota standard-e4-core-count to 32 in compartment {compartment}",
+    "zero database quota /*exadata*/ in compartment {compartments.dev}",
+  ]
+}
+```
+
+Entries without `parent_key` are created directly under the baseline compartment.
+`compartment_ids` returns the OCIDs by key. See
+[`examples/compartment-tree`](examples/compartment-tree).
+
+Quota policies live in the tenancy and address compartments by name path from the
+tenancy (`parent:child`). `{compartment}` becomes the baseline compartment's path and
+`{compartments.<key>}` the path of a tree entry; other text is passed through as is.
+When `parent_compartment_id` is not the tenancy, set `parent_compartment_path` (for
+example `"shared:landing-zones"`) so the module can build those paths; a placeholder it
+cannot resolve fails the plan.
+
+### Migrating from terraform-oci-compartment
+
+The archived `terraform-oci-compartment` module created one compartment, the same one
+this module creates as `oci_identity_compartment.this`. Its inputs map as `name` ->
+`compartment_name`, `description` -> `compartment_description`, `enable_delete` ->
+`compartment_enable_delete`, and its `id` output is `compartment_id`. To keep an
+existing compartment instead of creating a new one, add a `moved` block in the calling
+configuration:
+
+```hcl
+moved {
+  from = module.compartment.oci_identity_compartment.this
+  to   = module.baseline.oci_identity_compartment.this
+}
+```
+
+Compartments that were separate module calls can move to tree entries the same way, e.g.
+`to = module.baseline.oci_identity_compartment.level_1["prod"]`, where `level_N` is the
+entry's depth below the baseline compartment.
+
 ## Defaults worth knowing
 
 - **The compartment is not really deleted on `terraform destroy`.**
@@ -83,6 +148,18 @@ A runnable example lives in [`examples/basic`](examples/basic).
   rejects resource creation in the compartment unless the tag gets a value, so
   turn it on only once the teams creating resources know about the tag. Keys
   must be tag names from `tag_keys`; an unknown key fails the plan.
+- **The tree stops at five levels below the baseline compartment.** OCI allows six
+  nested compartment levels below the tenancy and the baseline compartment takes at
+  least one. Deeper entries and `parent_key` cycles fail the plan. When the parent is
+  the tenancy or `parent_compartment_path` is set, the plan also fails if the baseline
+  depth plus the tree depth exceeds six.
+- **Tree compartments are not deleted on destroy either.** `enable_delete` defaults to
+  `false` per entry, like `compartment_enable_delete`. Names must be unique among
+  siblings (compared case-insensitively).
+- **Quotas are opt-in.** No `oci_limits_quota` is created while `quota_statements` is
+  empty. The policy name defaults to `<compartment_name>-quota`; OCI requires it to be
+  unique in the tenancy and does not allow renaming it, so changing `quota_name`
+  replaces the policy.
 
 ## Tests
 
@@ -110,6 +187,10 @@ module itself still supports >= 1.5.
 | `compartment_name`        | Name of the landing-zone compartment.                             | `string`       | n/a                                |   yes    |
 | `compartment_description` | Description of the landing-zone compartment.                       | `string`       | `"Landing zone baseline compartment managed by Terraform"` |    no    |
 | `compartment_enable_delete` | Whether `terraform destroy` really deletes the compartment.      | `bool`         | `false`                            |    no    |
+| `parent_compartment_path` | Colon-separated name path of the parent from the tenancy; needed for quota paths when the parent is not the tenancy. | `string` | `null` | no |
+| `compartments`            | Compartment tree under the baseline compartment, keyed by label: `description`, optional `name`, `parent_key`, `enable_delete`, `freeform_tags`, `defined_tags`. | `map(object({ description = string, name = optional(string), parent_key = optional(string), enable_delete = optional(bool, false), freeform_tags = optional(map(string)), defined_tags = optional(map(string)) }))` | `{}` | no |
+| `quota_statements`        | Quota statements; `{compartment}` and `{compartments.<key>}` are replaced with name paths. | `list(string)` | `[]` | no |
+| `quota_name`              | Quota policy name, unique in the tenancy and immutable.           | `string`       | `"<compartment_name>-quota"`       |    no    |
 | `tag_namespace_name`      | Name of the defined-tag namespace.                                | `string`       | n/a                                |   yes    |
 | `tag_keys`                | Defined-tag keys to create in the namespace.                      | `list(string)` | `["Environment","Owner","CostCenter"]` |  no  |
 | `cost_tracking_tag_keys`  | Keys from `tag_keys` to mark as cost-tracking (max 10).           | `list(string)` | `["CostCenter"]`                   |    no    |
@@ -132,6 +213,10 @@ module itself still supports >= 1.5.
 | `budget_id`            | OCID of the compartment budget.          |
 | `budget_alert_rule_ids` | Map of `budget_alerts` key to alert rule OCID. |
 | `budget_alert_rule_id` | Deprecated: OCID of the `actual` alert rule, or null. |
+| `compartment_ids`      | Map of `compartments` key to compartment OCID. |
+| `compartment_path`     | Name path of the baseline compartment from the tenancy, or null. |
+| `compartment_paths`    | Map of `compartments` key to name path from the tenancy. |
+| `quota_id`             | OCID of the quota policy, or null.       |
 
 ## License
 

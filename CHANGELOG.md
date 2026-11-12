@@ -6,6 +6,28 @@ All notable changes to this module are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `compartments` input: a compartment tree under the baseline compartment
+  from one map, nested by `parent_key` up to five levels, with per-entry
+  `name`, `enable_delete` (default `false`) and tags merged over the
+  module-level tags. Empty by default. Replaces the archived
+  terraform-oci-compartment module. (#3)
+- `compartment_ids` and `compartment_paths` outputs for the tree, and
+  `compartment_path` for the baseline compartment. (#3)
+- `quota_statements` and `quota_name` inputs: one `oci_limits_quota` policy in
+  the tenancy, with `{compartment}` and `{compartments.<key>}` replaced by
+  compartment name paths. Empty by default, so no quota is created. (#3)
+- `parent_compartment_path` input, needed for quota paths and the nesting
+  check when the parent is not the tenancy. (#3)
+- `quota_id` output. (#3)
+
+### Changed
+
+- `compartment_name` must be 1-100 letters, digits, periods, hyphens or
+  underscores, and `compartment_description` 1-400 characters, checked at
+  plan time instead of failing at apply. (#3)
+
 ## [1.2.0] - 2026-11-07
 
 ### Added

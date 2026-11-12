@@ -32,3 +32,29 @@ output "budget_alert_rule_id" {
   description = "Deprecated: use budget_alert_rule_ids. OCID of the `actual` budget alert rule, or null if there is none."
   value       = try(oci_budget_alert_rule.this["actual"].id, null)
 }
+
+output "compartment_ids" {
+  description = "Map of compartments key to compartment OCID."
+  value = merge(
+    { for k, c in oci_identity_compartment.level_1 : k => c.id },
+    { for k, c in oci_identity_compartment.level_2 : k => c.id },
+    { for k, c in oci_identity_compartment.level_3 : k => c.id },
+    { for k, c in oci_identity_compartment.level_4 : k => c.id },
+    { for k, c in oci_identity_compartment.level_5 : k => c.id },
+  )
+}
+
+output "compartment_path" {
+  description = "Name path of the baseline compartment from the tenancy, as used in quota and IAM policy statements; null when the parent is not the tenancy and parent_compartment_path is not set."
+  value       = local.compartment_path
+}
+
+output "compartment_paths" {
+  description = "Map of compartments key to name path from the tenancy; values are null when compartment_path is null."
+  value       = local.compartment_paths
+}
+
+output "quota_id" {
+  description = "OCID of the compartment quota policy, or null when quota_statements is empty."
+  value       = try(oci_limits_quota.this[0].id, null)
+}

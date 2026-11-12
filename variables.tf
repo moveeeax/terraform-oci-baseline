@@ -8,15 +8,41 @@ variable "parent_compartment_id" {
   type        = string
 }
 
-variable "compartment_name" {
-  description = "Name of the landing-zone compartment to create."
+variable "parent_compartment_path" {
+  description = <<-EOT
+    Name path of `parent_compartment_id` from the tenancy, colon-separated,
+    e.g. "shared:landing-zones". Only used to address compartments in
+    `quota_statements` and to check the OCI nesting limit; leave null when
+    the parent is the tenancy.
+  EOT
   type        = string
+  default     = null
+
+  validation {
+    condition     = var.parent_compartment_path == null ? true : can(regex("^[A-Za-z0-9._-]{1,100}(:[A-Za-z0-9._-]{1,100})*$", var.parent_compartment_path))
+    error_message = "parent_compartment_path must be compartment names separated by \":\", e.g. \"shared:landing-zones\"."
+  }
+}
+
+variable "compartment_name" {
+  description = "Name of the landing-zone compartment to create. Letters, digits, periods, hyphens and underscores; 1-100 characters."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._-]{1,100}$", var.compartment_name))
+    error_message = "compartment_name must be 1-100 letters, digits, periods, hyphens or underscores; OCI rejects other characters at apply time."
+  }
 }
 
 variable "compartment_description" {
   description = "Description of the landing-zone compartment."
   type        = string
   default     = "Landing zone baseline compartment managed by Terraform"
+
+  validation {
+    condition     = length(var.compartment_description) >= 1 && length(var.compartment_description) <= 400
+    error_message = "compartment_description must be between 1 and 400 characters."
+  }
 }
 
 variable "tag_namespace_name" {
@@ -34,6 +60,53 @@ variable "compartment_enable_delete" {
   EOT
   type        = bool
   default     = false
+}
+
+variable "compartments" {
+  description = <<-EOT
+    Compartment tree to create under the baseline compartment, keyed by a
+    name of your choice. An entry without `parent_key` is a direct child of
+    the baseline compartment; `parent_key` names another entry to nest under.
+    `name` defaults to the key, so two entries can share a name under
+    different parents (e.g. a "network" compartment per environment).
+    `freeform_tags` and `defined_tags` are merged over the module-level tags.
+    `enable_delete` defaults to false, as for the baseline compartment.
+    Up to five levels below the baseline compartment.
+  EOT
+  type = map(object({
+    description   = string
+    name          = optional(string)
+    parent_key    = optional(string)
+    enable_delete = optional(bool, false)
+    freeform_tags = optional(map(string))
+    defined_tags  = optional(map(string))
+  }))
+  default = {}
+
+  validation {
+    condition = alltrue([
+      for k, c in var.compartments : c.parent_key == null ? true : (c.parent_key != k && contains(keys(var.compartments), c.parent_key))
+    ])
+    error_message = "Every compartments parent_key must be the key of another entry in compartments."
+  }
+
+  validation {
+    condition     = alltrue([for k, c in var.compartments : can(regex("^[A-Za-z0-9._-]{1,100}$", coalesce(c.name, k)))])
+    error_message = "Every compartments name (the key when name is omitted) must be 1-100 letters, digits, periods, hyphens or underscores."
+  }
+
+  validation {
+    condition     = alltrue([for c in values(var.compartments) : length(c.description) >= 1 && length(c.description) <= 400])
+    error_message = "Every compartments description must be between 1 and 400 characters."
+  }
+
+  validation {
+    # OCI rejects two compartments with the same name under one parent.
+    condition = length(distinct([
+      for k, c in var.compartments : "${coalesce(c.parent_key, "\u0000")}/${lower(coalesce(c.name, k))}"
+    ])) == length(var.compartments)
+    error_message = "Two compartments entries with the same parent_key have the same name; OCI requires names to be unique within a parent."
+  }
 }
 
 variable "tag_keys" {
@@ -185,6 +258,30 @@ variable "budget_alert_recipients" {
     ])
     error_message = "Every entry in budget_alert_recipients must be an email address, e.g. \"finops@example.com,platform@example.com\"."
   }
+}
+
+variable "quota_statements" {
+  description = <<-EOT
+    Compartment quota statements, e.g.
+    "set compute quota standard-e4-core-count to 16 in compartment {compartment}".
+    `{compartment}` is replaced with the name path of the baseline compartment
+    and `{compartments.<key>}` with the path of an entry in `compartments`.
+    Statements are kept in order in one `oci_limits_quota` policy in the
+    tenancy. Empty by default: no quota policy is created.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.quota_statements : length(trimspace(s)) > 0])
+    error_message = "quota_statements must not contain blank statements."
+  }
+}
+
+variable "quota_name" {
+  description = "Name of the quota policy. Must be unique in the tenancy and cannot be changed after creation. Defaults to \"<compartment_name>-quota\"."
+  type        = string
+  default     = null
 }
 
 variable "freeform_tags" {
