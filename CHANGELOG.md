@@ -4,7 +4,7 @@ All notable changes to this module are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the module uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-12
 
 ### Added
 
@@ -55,5 +55,5 @@ All notable changes to this module are documented here. The format follows
 - `budget_alert_rule_id` output: returns the `actual` alert rule OCID or
   `null`. Use `budget_alert_rule_ids`. (#5)
 
-[Unreleased]: https://github.com/moveeeax/terraform-oci-baseline/compare/v1.2.0...HEAD
+[1.3.0]: https://github.com/moveeeax/terraform-oci-baseline/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/moveeeax/terraform-oci-baseline/compare/v1.1.0...v1.2.0
